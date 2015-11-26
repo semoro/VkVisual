@@ -4,7 +4,6 @@ import java.io.{File, FileWriter}
 
 import com.netaporter.uri.Uri
 import com.netaporter.uri.dsl._
-import org.graphstream.graph.implementations.AbstractNode
 import org.json4s.FileInput
 import org.json4s.JsonAST._
 import org.json4s.native.JsonMethods
@@ -14,15 +13,16 @@ import scala.collection.mutable
 class VKUser(val name: String, val id: BigInt, val sex: Sex.Value, val photos: List[String]) {
   var friends: List[VKUser] = List()
   var links: mutable.MutableList[VKUser] = mutable.MutableList()
-  var node: AbstractNode = null
+
+  var node = false
 
   override def toString() = name + "(" + id + ") " + sex
 
   def addDirectEdges: Unit = {
-    Main.frame.progressbar.setState(LinkTypes.Indirect, friends.count(friend => friend.node == null))
-    friends.filter(friend => friend.node == null).filter(friend => !links.contains(friend)).foreach(friend => {
+    Main.frame.progressbar.setState(LinkTypes.Indirect, friends.count(friend => !friend.node))
+    friends.filter(friend => !friend.node).filter(friend => !links.contains(friend)).foreach(friend => {
       friend.addNode()
-      Main.graph.addEdge(id + "-" + friend.id, node, friend.node)
+      Main.graph.addEdge(this, friend)
       links += friend
       friend.links += this
       Main.frame.progressbar.updateProgress()
@@ -31,10 +31,7 @@ class VKUser(val name: String, val id: BigInt, val sex: Sex.Value, val photos: L
   }
 
   def addNode(): Unit = {
-    node = Main.graph.addNode(id.toString())
-    node.setAttribute("user", this)
-    node.setAttribute("ui.class", sex.toString)
-    node.setAttribute("layout.weight", "0")
+    node = Main.graph.addVertex(this)
   }
 
   def addIndirectEdges: Unit = {
@@ -52,8 +49,8 @@ class VKUser(val name: String, val id: BigInt, val sex: Sex.Value, val photos: L
   }
 
   def addAvailableEdges: Unit = {
-    friends.filter(friend => friend.node != null).filter(friend => !links.contains(friend)).foreach(friend => {
-      Main.graph.addEdge(id + "-" + friend.id, node, friend.node)
+    friends.filter(friend => friend.node).filter(friend => !links.contains(friend)).foreach(friend => {
+      Main.graph.addEdge(this, friend)
       links += friend
       friend.links += this
       None
