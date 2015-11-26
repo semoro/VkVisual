@@ -9,3 +9,6 @@ libraryDependencies += "org.graphstream" % "gs-algo" % "1.3"
 libraryDependencies += "org.graphstream" % "gs-ui" % "1.3"
 libraryDependencies += "org.json4s" % "json4s-native_2.11" % "3.3.0"
 libraryDependencies += "com.netaporter" %% "scala-uri" % "0.4.11"
+
+fork in run := true
+javaOptions in run += "-Dsun.java2d.opengl=True"

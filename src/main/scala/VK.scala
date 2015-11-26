@@ -1,12 +1,68 @@
 
 
+import java.io.{File, FileWriter}
+
 import com.netaporter.uri.Uri
 import com.netaporter.uri.dsl._
-import org.graphstream.graph.implementations.{MultiGraph, AbstractNode}
+import org.graphstream.graph.implementations.AbstractNode
+import org.json4s.FileInput
 import org.json4s.JsonAST._
 import org.json4s.native.JsonMethods
 
 import scala.collection.mutable
+
+class VKUser(val name: String, val id: BigInt, val sex: Sex.Value, val photos: List[String]) {
+  var friends: List[VKUser] = List()
+  var links: mutable.MutableList[VKUser] = mutable.MutableList()
+  var node: AbstractNode = null
+
+  override def toString() = name + "(" + id + ") " + sex
+
+  def addDirectEdges: Unit = {
+    Main.frame.progressbar.setState(LinkTypes.Indirect, friends.count(friend => friend.node == null))
+    friends.filter(friend => friend.node == null).filter(friend => !links.contains(friend)).foreach(friend => {
+      friend.addNode()
+      Main.graph.addEdge(id + "-" + friend.id, node, friend.node)
+      links += friend
+      friend.links += this
+      Main.frame.progressbar.updateProgress()
+      None
+    })
+  }
+
+  def addNode(): Unit = {
+    node = Main.graph.addNode(id.toString())
+    node.setAttribute("user", this)
+    node.setAttribute("ui.class", sex.toString)
+    node.setAttribute("layout.weight", "0")
+  }
+
+  def addIndirectEdges: Unit = {
+    Main.frame.progressbar.setState(LinkTypes.Indirect, friends.count(f => true))
+    friends.foreach(friend => {
+      friend.loadFriends()
+      friend.addAvailableEdges
+      Main.frame.progressbar.updateProgress()
+    })
+  }
+
+  def loadFriends(): Unit = {
+    if (friends.isEmpty)
+      friends :::= VKApi.getFriends(this)
+  }
+
+  def addAvailableEdges: Unit = {
+    friends.filter(friend => friend.node != null).filter(friend => !links.contains(friend)).foreach(friend => {
+      Main.graph.addEdge(id + "-" + friend.id, node, friend.node)
+      links += friend
+      friend.links += this
+      None
+    })
+  }
+
+  VKApi.allUsers += this
+}
+
 
 /**
   * XCodersTeam 2015 VkVisual
@@ -15,9 +71,17 @@ import scala.collection.mutable
 
 object REST {
   def get(url: Uri): JValue = {
-    println(url.toString)
-    val result = scala.io.Source.fromURL(url.toString).mkString
-    println(result)
+    val str = url.toString
+    println(str)
+    val cachedVersion = new File("cache/" + str.substring(str.indexOf("//") + 2))
+    if (cachedVersion.exists()) {
+      println("Loaded from cache")
+      return JsonMethods.parse(new FileInput(cachedVersion))
+    }
+    val result = scala.io.Source.fromURL(str).mkString
+    //println(result)
+    println("Response")
+    new FileWriter(cachedVersion).append(result).close()
     JsonMethods.parse(result)
   }
 }
@@ -25,46 +89,6 @@ object REST {
 
 object Sex extends Enumeration {
   val Trap, Female, Male = Value
-}
-
-
-class VKUser(_name: String, uid: BigInt, _sex: Sex.Value, _photos:List[String]) {
-  override def toString() = name + "(" + uid + ") " + sex
-
-  val name = _name
-  var friends: List[VKUser] = List()
-  var friendsDisplayed = false
-  val id = uid
-  val sex = _sex
-  var node: AbstractNode = null
-  val photos = _photos
-
-  def loadFriends(): Unit = {
-    if (!friendsDisplayed)
-      friends :::= VKApi.getFriends(this)
-  }
-
-
-  def addNode(graph: MultiGraph): Unit = {
-    node = graph.addNode(id.toString())
-    node.setAttribute("user", this)
-    node.setAttribute("ui.class", sex.toString)
-  }
-
-  def addNodes(graph: MultiGraph): Unit = {
-    if (friendsDisplayed)
-      return
-    friendsDisplayed = true
-    friends.foreach(user => {
-      if (user.node == null) {
-        user.addNode(graph)
-      }
-      graph.addEdge(this.id + "-" + user.id, this.id.toString(), user.id.toString())
-      None
-    })
-  }
-
-  VKApi.allUsers+=this
 }
 
 object VKApi {

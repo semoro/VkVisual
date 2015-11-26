@@ -1,41 +1,48 @@
-import java.awt.event.{MouseWheelEvent, MouseWheelListener}
+import java.awt.event._
 import java.awt.{BorderLayout, GridBagConstraints, GridBagLayout}
 import java.net.URL
 import java.util.function.Consumer
 import javax.swing._
+import javax.swing.event.{DocumentEvent, DocumentListener}
 
 import org.graphstream.graph.Node
 import org.graphstream.graph.implementations.{AbstractNode, MultiGraph}
+import org.graphstream.ui.layout.springbox.implementations.SpringBox
 import org.graphstream.ui.view.{Viewer, ViewerListener}
 
-/**
-  * XCodersTeam 2015 VkVisual
-  * Created by semoro on 26.11.15.
-  */
+class LoadingProgressBar extends JProgressBar {
 
+  var str = ""
+  var p: Int = 0
+  var max = 0
+  var linkType: LinkTypes.Value = null
+  setStringPainted(true)
 
-object ConstraintsHelper {
-  def gridXY(x: Int, y: Int, gridBagConstraints: GridBagConstraints = new GridBagConstraints()): GridBagConstraints = {
-    gridBagConstraints.gridx = x
-    gridBagConstraints.gridy = y
-    gridBagConstraints
+  def setState(linkType: LinkTypes.Value, max: Int): Unit = {
+    this.max = max
+    str = linkType.toString + " " + p + " из " + max
+    this.linkType = linkType
+    setString(str)
+    p = 0
+    setValue(p)
+    setMaximum(max)
   }
 
-  def anchor(a: Int, gridBagConstraints: GridBagConstraints = new GridBagConstraints()): GridBagConstraints = {
-    gridBagConstraints.anchor = a
-    gridBagConstraints
+  def updateProgress(): Unit = {
+    p += 1
+    str = linkType.toString + " " + p + " из " + max
+    setString(str)
+    setValue(p)
   }
 }
 
 class Frame extends JFrame {
 
-  private val loadingIcon = new ImageIcon(this.getClass.getResource("loading_spinner.gif"))
-
   val graph = new MultiGraph("VKVisual")
-  val viewer = new Viewer(graph, Viewer.ThreadingModel.GRAPH_IN_GUI_THREAD)
-
+  val viewer = new Viewer(graph, Viewer.ThreadingModel.GRAPH_IN_ANOTHER_THREAD)
   val viewerPipe = viewer.newViewerPipe()
   val listener = new ClickListener(graph)
+  val graphLayout = new SpringBox()
 
   viewerPipe.addViewerListener(listener)
   viewerPipe.addSink(graph)
@@ -48,26 +55,61 @@ class Frame extends JFrame {
       "node .Female{fill-color:pink;}\n" +
       "node .Trap{fill-color:orange;}\n" +
       "node:clicked {fill-color:red;}\n" +
-      "node .showInfo{fill-color:red;}\n")
-  graph.addAttribute("ui.quality")
+      "node .showInfo{fill-color:red;}\n" +
+      "node .searchMatch{fill-color:green;}")
+  //graph.addAttribute("ui.quality")
   graph.addAttribute("ui.antialias")
-
-  var view = viewer.addDefaultView(false)
+  val progressbar = new LoadingProgressBar()
+  val panel = new JPanel()
+  viewer.enableAutoLayout(graphLayout)
 
   setLayout(new BorderLayout)
   add(view, BorderLayout.CENTER)
   setSize(800, 600)
+  val search = new JTextField()
 
-  val panel = new JPanel()
+  add(progressbar, BorderLayout.NORTH)
+  val gbc = ConstraintsHelper.gridXY(0, 0)
   add(panel, BorderLayout.WEST)
+
 
   panel.setLayout(new GridBagLayout)
   val name = new JLabel()
-  panel.add(name, ConstraintsHelper.gridXY(0, 0))
+  search.getDocument.addDocumentListener(new DocumentListener {
+    override def insertUpdate(e: DocumentEvent): Unit = update()
 
+    override def changedUpdate(e: DocumentEvent): Unit = update()
+
+    override def removeUpdate(e: DocumentEvent): Unit = update()
+
+    def update(): Unit = {
+      println("Update " + search.getText)
+      graph.getEachNode.forEach(new Consumer[Node] {
+        override def accept(t: Node): Unit = {
+          if (t.getAttribute("user").asInstanceOf[VKUser].name.contains(search.getText)) {
+            t.addAttribute("ui.class", "searchMatch")
+            println(t.getAttribute("user").asInstanceOf[VKUser].name)
+          } else
+            t.removeAttribute("ui.class")
+        }
+      })
+    }
+  })
   val photoIcon = new JLabel()
-  panel.add(photoIcon, ConstraintsHelper.gridXY(0, 1))
+  gbc.fill = GridBagConstraints.HORIZONTAL
+  panel.add(search, gbc)
+  private val loadingIcon = new ImageIcon(this.getClass.getResource("loading_spinner.gif"))
+  panel.add(name, ConstraintsHelper.gridXY(0, 1))
+  var view = viewer.addDefaultView(false)
+  panel.add(photoIcon, ConstraintsHelper.gridXY(0, 2))
 
+  addKeyListener(new KeyAdapter {
+    override def keyPressed(e: KeyEvent): Unit = {
+      super.keyPressed(e)
+      if (e.getKeyCode == KeyEvent.VK_SPACE)
+        view.getCamera.resetView()
+    }
+  })
 
   def setInfo(user: VKUser): Unit = {
     SwingUtilities.invokeLater(new Runnable {
@@ -83,41 +125,12 @@ class Frame extends JFrame {
   }
 }
 
-
-object Main {
-  val frame = new Frame
-
-  def main(args: Array[String]): Unit = {
-    frame.setVisible(true)
-    val viewer = frame.viewer
-    val graph = frame.graph
-    viewer.enableAutoLayout()
-    viewer.getDefaultView.addMouseWheelListener(new MouseWheelListener {
-      var rotation = 0.0
-
-      override def mouseWheelMoved(e: MouseWheelEvent): Unit = {
-        rotation += e.getWheelRotation
-        if (rotation <= 0)
-          rotation = 1
-        viewer.getDefaultView.getCamera.setViewPercent(rotation / 32)
-      }
-    })
-    val me = VKApi.getUsers(Array("semoro")).head
-    me.addNode(graph)
-    SwingUtilities.invokeLater(new Runnable {
-      override def run(): Unit = {
-        me.loadFriends()
-        me.addNodes(graph)
-      }
-    })
-
-    while (frame.listener.loop) {
-      frame.viewerPipe.blockingPump()
-    }
-
+class Worker(vKUser: VKUser) extends Runnable {
+  override def run(): Unit = {
+    vKUser.addDirectEdges
+    vKUser.addIndirectEdges
   }
 }
-
 
 class ClickListener(graph: MultiGraph) extends ViewerListener {
   var loop = true
@@ -140,10 +153,7 @@ class ClickListener(graph: MultiGraph) extends ViewerListener {
     if (vkUser == null)
       return;
     if (node.hasAttribute("lastClick") && System.currentTimeMillis() - node.getAttribute("lastClick").asInstanceOf[Long] < 250) {
-      vkUser.loadFriends()
-      SwingUtilities.invokeLater(new Runnable {
-        override def run(): Unit = vkUser.addNodes(graph)
-      })
+      new Thread(new Worker(vkUser)).start()
     } else {
       node.setAttribute("lastClick", Long.box(System.currentTimeMillis()))
       Main.frame.setInfo(vkUser)
@@ -152,5 +162,65 @@ class ClickListener(graph: MultiGraph) extends ViewerListener {
 
   override def viewClosed(viewName: String): Unit = {
     loop = false
+  }
+}
+
+/**
+  * XCodersTeam 2015 VkVisual
+  * Created by semoro on 26.11.15.
+  */
+
+
+object ConstraintsHelper {
+  def gridXY(x: Int, y: Int, gridBagConstraints: GridBagConstraints = new GridBagConstraints()): GridBagConstraints = {
+    gridBagConstraints.gridx = x
+    gridBagConstraints.gridy = y
+    gridBagConstraints
+  }
+
+  def anchor(a: Int, gridBagConstraints: GridBagConstraints = new GridBagConstraints()): GridBagConstraints = {
+    gridBagConstraints.anchor = a
+    gridBagConstraints
+  }
+}
+
+
+object LinkTypes extends Enumeration {
+  val Direct = Value("Загрузка прямых связей")
+  val Indirect = Value("Загрузка побочных связей")
+}
+
+
+object Main {
+  val frame = new Frame
+  val graph: MultiGraph = frame.graph
+  def main(args: Array[String]): Unit = {
+    System.setProperty("gs.ui.renderer", "org.graphstream.ui.j2dviewer.J2DGraphRenderer")
+    frame.setVisible(true)
+    val viewer = frame.viewer
+    graph.setStrict(false)
+    viewer.enableAutoLayout()
+    viewer.getDefaultView.addMouseWheelListener(new MouseWheelListener {
+      var rotation = 0.0
+
+      override def mouseWheelMoved(e: MouseWheelEvent): Unit = {
+        rotation += e.getWheelRotation
+        if (rotation <= 0)
+          rotation = 1
+        viewer.getDefaultView.getCamera.setViewPercent(rotation / 32)
+      }
+    })
+
+    val me = VKApi.getUsers(Array("16865527")).head
+    me.addNode()
+    frame.graphLayout.freezeNode(me.node.getId, true)
+    me.loadFriends()
+    new Worker(me).run()
+
+
+    while (frame.listener.loop) {
+      frame.viewerPipe.blockingPump()
+    }
+
   }
 }
