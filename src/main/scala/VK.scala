@@ -78,7 +78,7 @@ object REST {
       println("Loaded from cache")
       return JsonMethods.parse(new FileInput(cachedVersion))
     }
-    val result = scala.io.Source.fromURL(str).mkString
+    val result = scala.io.Source.fromURL(str)("UTF-8").mkString
     //println(result)
     println("Response")
     new FileWriter(cachedVersion).append(result).close()
