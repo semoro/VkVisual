@@ -16,7 +16,7 @@ import scala.collection.mutable
 object REST {
   def get(url: Uri): JValue = {
     println(url.toString)
-    val result = scala.io.Source.fromURL(url.toString).mkString
+    val result = scala.io.Source.fromURL(url.toString)("UTF-8").mkString
     println(result)
     JsonMethods.parse(result)
   }
