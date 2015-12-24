@@ -1,12 +1,9 @@
-import java.awt.{BorderLayout, GridBagConstraints, GridBagLayout}
+import java.awt._
+import java.awt.event.{KeyEvent, KeyListener}
 import java.net.URL
 import javax.swing._
 import javax.swing.event.{DocumentEvent, DocumentListener}
 
-import com.mxgraph.layout.mxOrganicLayout
-import com.mxgraph.swing.mxGraphComponent
-import org.jgrapht.ext.JGraphXAdapter
-import org.jgrapht.graph.{DefaultEdge, ListenableUndirectedGraph}
 
 class LoadingProgressBar extends JProgressBar {
 
@@ -34,17 +31,42 @@ class LoadingProgressBar extends JProgressBar {
   }
 }
 
+class RenderOO(uGraph: UGraph[VKUser]) extends JPanel {
+
+  var px = 400
+  var py = 200
+  var scl = 4.0
+
+
+  override def paint(g: Graphics): Unit = {
+    g.setColor(Color.WHITE)
+    g.clearRect(0, 0, getWidth, getHeight)
+    g.translate(px, py)
+    g.setColor(Color.BLACK)
+    uGraph.links foreach (link => g.drawLine((link.a.pos.x * scl).toInt, (link.a.pos.y * scl).toInt, (link.b.pos.x * scl).toInt, (link.b.pos.y * scl).toInt))
+    g.setColor(Color.RED)
+    uGraph.nodes foreach (node => {
+      g.fillRect((node.pos.x * scl).toInt - 5, (node.pos.y * scl).toInt - 5, 10, 10)
+    })
+  }
+
+  def fit(): Unit = {
+
+  }
+}
+
 class Frame extends JFrame {
 
-  val graph = new ListenableUndirectedGraph[VKUser, DefaultEdge](classOf[DefaultEdge])
+  val graph = new UGraph[VKUser]
 
   this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE)
 
   val progressbar = new LoadingProgressBar()
   val panel = new JPanel()
-  val jgxAdapter = new JGraphXAdapter[VKUser, DefaultEdge](graph)
+  val render = new RenderOO(graph)
   setLayout(new BorderLayout)
-  add(new mxGraphComponent(jgxAdapter))
+  render.setSize(800, 600)
+  add(render, BorderLayout.CENTER)
   setSize(800, 600)
   val search = new JTextField()
 
@@ -68,12 +90,25 @@ class Frame extends JFrame {
   })
   val photoIcon = new JLabel()
   gbc.fill = GridBagConstraints.HORIZONTAL
-  panel.add(search, gbc)
+  //panel.add(search, gbc)
   private val loadingIcon = new ImageIcon(this.getClass.getResource("loading_spinner.gif"))
   panel.add(name, ConstraintsHelper.gridXY(0, 1))
   // var view = viewer.addDefaultView(false)
   panel.add(photoIcon, ConstraintsHelper.gridXY(0, 2))
 
+  this.addKeyListener(new KeyListener {
+    override def keyTyped(e: KeyEvent): Unit = None
+
+    override def keyPressed(e: KeyEvent): Unit = None
+
+    override def keyReleased(e: KeyEvent): Unit = {
+      if (e.getKeyCode == KeyEvent.VK_SPACE) {
+
+        render.repaint()
+        graph.nodes foreach (node => println(node.pos.x + "," + node.pos.y))
+      }
+    }
+  })
 
   def setInfo(user: VKUser): Unit = {
     SwingUtilities.invokeLater(new Runnable {
@@ -87,16 +122,25 @@ class Frame extends JFrame {
       override def run(): Unit = photoIcon.setIcon(i)
     })
   }
+
+  new Thread(new Runnable {
+    override def run(): Unit = {
+      while (true) {
+        graph.calculatePhys()
+        SwingUtilities.invokeLater(new Runnable {
+          override def run(): Unit = render.repaint()
+        })
+
+        Thread.sleep(50)
+      }
+    }
+  }).start()
 }
 
 class Worker(vKUser: VKUser) extends Runnable {
   override def run(): Unit = {
     vKUser.addDirectEdges
-    Main.layout.execute(Main.jgxAdapter.getDefaultParent())
-    Main.fitGraph()
     vKUser.addIndirectEdges
-    Main.layout.execute(Main.jgxAdapter.getDefaultParent())
-    Main.fitGraph()
   }
 }
 
@@ -128,16 +172,8 @@ object LinkTypes extends Enumeration {
 
 object Main {
   val frame = new Frame
-  val graph: ListenableUndirectedGraph[VKUser, DefaultEdge] = frame.graph
-  val jgxAdapter = frame.jgxAdapter
-  val layout = new mxOrganicLayout(jgxAdapter)
+  val graph: UGraph[VKUser] = frame.graph
 
-  def fitGraph(): Unit = {
-    val view = jgxAdapter.getView()
-    val compLen = 800
-    val viewLen = view.getGraphBounds().getWidth()
-    view.setScale(compLen / viewLen * view.getScale())
-  }
 
   def main(args: Array[String]): Unit = {
     System.setProperty("gs.ui.renderer", "org.graphstream.ui.j2dviewer.J2DGraphRenderer")

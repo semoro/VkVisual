@@ -31,7 +31,7 @@ class VKUser(val name: String, val id: BigInt, val sex: Sex.Value, val photos: L
   }
 
   def addNode(): Unit = {
-    node = Main.graph.addVertex(this)
+    Main.graph.addVertex(this)
   }
 
   def addIndirectEdges: Unit = {
@@ -40,6 +40,7 @@ class VKUser(val name: String, val id: BigInt, val sex: Sex.Value, val photos: L
       friend.loadFriends()
       friend.addAvailableEdges
       Main.frame.progressbar.updateProgress()
+      None
     })
   }
 
