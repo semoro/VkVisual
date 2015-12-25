@@ -31,7 +31,7 @@ class VKUser(val name: String, val id: BigInt, val sex: Sex.Value, val photos: L
   }
 
   def addNode(): Unit = {
-    Main.graph.addVertex(this)
+    node = Main.graph.addVertex(this)
   }
 
   def addIndirectEdges: Unit = {
