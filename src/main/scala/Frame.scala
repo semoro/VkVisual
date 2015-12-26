@@ -1,8 +1,13 @@
 import java.awt._
-import java.awt.event.{KeyEvent, KeyListener}
+import java.awt.event.{KeyEvent, KeyListener, MouseAdapter, MouseEvent}
+import java.io._
 import java.net.URL
 import javax.swing._
 import javax.swing.event.{DocumentEvent, DocumentListener}
+
+import org.joml.Vector2f
+
+import scala.collection.mutable
 
 
 class LoadingProgressBar extends JProgressBar {
@@ -39,19 +44,54 @@ class RenderOO(uGraph: UGraph[VKUser]) extends JPanel {
 
 
   override def paint(g: Graphics): Unit = {
+
+    val g2d = g.asInstanceOf[Graphics2D]
+    g2d.setRenderingHint(
+      RenderingHints.KEY_ANTIALIASING,
+      RenderingHints.VALUE_ANTIALIAS_ON)
+    g2d.setRenderingHint(
+      RenderingHints.KEY_TEXT_ANTIALIASING,
+      RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+    g2d.setRenderingHint(
+      RenderingHints.KEY_FRACTIONALMETRICS,
+      RenderingHints.VALUE_FRACTIONALMETRICS_ON)
+
     g.setColor(Color.WHITE)
     g.clearRect(0, 0, getWidth, getHeight)
     g.translate(px, py)
-    g.setColor(Color.BLACK)
-    uGraph.links foreach (link => g.drawLine((link.a.pos.x * scl).toInt, (link.a.pos.y * scl).toInt, (link.b.pos.x * scl).toInt, (link.b.pos.y * scl).toInt))
-    g.setColor(Color.RED)
+    import Main.frame.focusedNode
+    uGraph.links foreach (link => {
+      g.setColor(if (focusedNode == link.a || focusedNode == link.b) Color.ORANGE else Color.DARK_GRAY)
+      g.drawLine((link.a.pos.x * scl).toInt, (link.a.pos.y * scl).toInt, (link.b.pos.x * scl).toInt, (link.b.pos.y * scl).toInt)
+    })
+
+    uGraph.links filter (link => link.highlight) foreach (link => {
+      g.setColor(Color.RED)
+      g.drawLine((link.a.pos.x * scl).toInt, (link.a.pos.y * scl).toInt, (link.b.pos.x * scl).toInt, (link.b.pos.y * scl).toInt)
+    })
+
+    val searchName = Main.frame.search.getText.toLowerCase
     uGraph.nodes foreach (node => {
-      g.fillRect((node.pos.x * scl).toInt - 5, (node.pos.y * scl).toInt - 5, 10, 10)
+      g.setColor(Sex.getColor(node.data.asInstanceOf[VKUser].sex))
+      val size = if (searchName.length > 0 && node.data.asInstanceOf[VKUser].name.toLowerCase.contains(searchName)) 2 else 1
+      g.fillOval((node.pos.x * scl).toInt - 5 * size, (node.pos.y * scl).toInt - 5 * size, 10 * size, 10 * size)
     })
   }
 
-  def fit(): Unit = {
+}
 
+class KeyListen extends KeyListener {
+
+  val pressedKeys = mutable.ArrayBuffer[Int]()
+
+  override def keyTyped(e: KeyEvent): Unit = None
+
+  override def keyPressed(e: KeyEvent): Unit = {
+    pressedKeys += e.getKeyCode
+  }
+
+  override def keyReleased(e: KeyEvent): Unit = {
+    pressedKeys -= e.getKeyCode
   }
 }
 
@@ -73,10 +113,12 @@ class Frame extends JFrame {
   add(progressbar, BorderLayout.NORTH)
   val gbc = ConstraintsHelper.gridXY(0, 0)
   add(panel, BorderLayout.WEST)
-
+  val name = new JTextField()
+  add(scalaI, BorderLayout.SOUTH)
 
   panel.setLayout(new GridBagLayout)
-  val name = new JLabel()
+  val photoIcon = new JLabel()
+  name.setEditable(false)
   search.getDocument.addDocumentListener(new DocumentListener {
     override def insertUpdate(e: DocumentEvent): Unit = update()
 
@@ -86,34 +128,42 @@ class Frame extends JFrame {
 
     def update(): Unit = {
       println("Update " + search.getText)
+
     }
   })
-  val photoIcon = new JLabel()
+
+  render.addMouseListener(new MouseAdapter {
+    override def mouseClicked(e: MouseEvent): Unit = {
+      val pos = new Vector2f(((e.getX - render.px) / render.scl).toFloat, ((e.getY - render.py) / render.scl).toFloat)
+      val node: Node[VKUser] = graph.nodes.find(node => node.pos.distance(pos) * render.scl < 10).orNull
+      if (node != null) {
+        if (e.getClickCount == 1)
+          setInfo(node)
+        else if (e.getClickCount == 2)
+          new Thread(new Worker(node.data.asInstanceOf[VKUser])).start
+      } else {
+        focusedNode = null
+      }
+
+    }
+  })
+  val keyListen = new KeyListen
   gbc.fill = GridBagConstraints.HORIZONTAL
-  //panel.add(search, gbc)
+  panel.add(search, gbc)
   private val loadingIcon = new ImageIcon(this.getClass.getResource("loading_spinner.gif"))
   panel.add(name, ConstraintsHelper.gridXY(0, 1))
-  // var view = viewer.addDefaultView(false)
+
   panel.add(photoIcon, ConstraintsHelper.gridXY(0, 2))
+  var scalaI = new JTextArea()
+  search.addKeyListener(keyListen)
+  var focusedNode: Node[VKUser] = null
 
-  this.addKeyListener(new KeyListener {
-    override def keyTyped(e: KeyEvent): Unit = None
-
-    override def keyPressed(e: KeyEvent): Unit = None
-
-    override def keyReleased(e: KeyEvent): Unit = {
-      if (e.getKeyCode == KeyEvent.VK_SPACE) {
-
-        render.repaint()
-        graph.nodes foreach (node => println(node.pos.x + "," + node.pos.y))
-      }
-    }
-  })
-
-  def setInfo(user: VKUser): Unit = {
+  def setInfo(node: Node[VKUser]): Unit = {
+    val user = node.data.asInstanceOf[VKUser]
+    focusedNode = node
     SwingUtilities.invokeLater(new Runnable {
       override def run(): Unit = {
-        name.setText(user.name)
+        name.setText(user.name + "(" + user.id + ")")
         photoIcon.setIcon(loadingIcon)
       }
     })
@@ -126,6 +176,14 @@ class Frame extends JFrame {
   new Thread(new Runnable {
     override def run(): Unit = {
       while (true) {
+        if (keyListen.pressedKeys.contains(KeyEvent.VK_UP))
+          render.py += 50
+        if (keyListen.pressedKeys.contains(KeyEvent.VK_DOWN))
+          render.py -= 50
+        if (keyListen.pressedKeys.contains(KeyEvent.VK_LEFT))
+          render.px += 50
+        if (keyListen.pressedKeys.contains(KeyEvent.VK_RIGHT))
+          render.px -= 50
         graph.calculatePhys()
         SwingUtilities.invokeLater(new Runnable {
           override def run(): Unit = render.repaint()
@@ -176,16 +234,30 @@ object Main {
 
 
   def main(args: Array[String]): Unit = {
-    System.setProperty("gs.ui.renderer", "org.graphstream.ui.j2dviewer.J2DGraphRenderer")
     frame.setVisible(true)
 
 
-
-    val me = VKApi.getUsers(Array("16865527")).head
+    val me = VKApi.getUsers(Array("mave4ka")).head
     me.addNode()
     me.loadFriends()
-    new Worker(me).run()
+    new Thread(new Worker(me)).start()
 
+    val reader = new BufferedReader(new InputStreamReader(System.in))
+    while (true) {
+      val cmd = reader.readLine().split(" ")
+      cmd.head match {
+        case "wl" => {
+          val idA = BigInt(cmd(1))
+          val idB = BigInt(cmd(2))
+          val quota = cmd(3).toInt
+          graph.findLow(graph.nodes.find(node => node.data.asInstanceOf[VKUser].id == idA).get,
+            graph.nodes.find(node => node.data.asInstanceOf[VKUser].id == idB).get, quota)
+            .foreach(link => link.highlight = true)
+        }
+        case "clr" => graph.clearHighlightLinks()
+
+      }
+    }
 
   }
 }

@@ -15,6 +15,21 @@ class UGraph[T] {
       links += k
   }
 
+  def clearHighlightLinks(): Unit = {
+    links foreach (link => link.highlight = false)
+  }
+
+  def findLow(a: Node[T], b: Node[T], quota: Int): List[Link] = {
+    if (quota == 0)
+      links.filter(link => link.toNode(a) && link.toNode(b)).toList
+    else
+      links.filter(link => link.toNode(a))
+        .map(link => if (link.a == a) link.b else link.a)
+        .map(node => node.asInstanceOf[Node[T]])
+        .map(node => findLow(node, b, quota - 1))
+        .fold(List[Link]())((b, a) => a ::: b)
+  }
+
   def addVertex(a: T): Boolean = {
     nodes += new Node(a)
     true
@@ -26,7 +41,7 @@ class UGraph[T] {
       nodes filterNot (a => a == node) foreach (s => {
         val dist = node.pos.distance(s.pos)
         if (dist < 50) {
-          tmp.set(node.pos).sub(s.pos).normalize().mul((dist * dist) / 2000)
+          tmp.set(node.pos).sub(s.pos).normalize().mul(100 / dist)
           node.force.add(tmp)
           node.count += 1
         }
@@ -36,7 +51,7 @@ class UGraph[T] {
 
     links foreach (link => {
       val vec = tmp.set(link.a.pos).sub(link.b.pos)
-      val d = -(vec.length() / 10f)
+      val d = -vec.length()
       link.a.force.add(vec.normalize().mul(d))
       link.a.count += 1
       link.b.force.add(vec.negate())
@@ -66,8 +81,11 @@ class Link(_a: Node[Any], _b: Node[Any]) {
     throw new RuntimeException
   val linkLength = 50
 
+  var highlight = false
   var a = _a
   var b = _b
+
+  def toNode(node: Node[Any]): Boolean = a == node || b == node
 
   override def equals(obj: scala.Any): Boolean = {
     obj match {
