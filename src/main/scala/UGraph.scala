@@ -23,7 +23,7 @@ class UGraph[T] {
     if (quota == 0)
       links.filter(link => link.toNode(a) && link.toNode(b)).toList
     else
-      links.filter(link => link.toNode(a))
+      links.filter(link => link.toNode(a)).filterNot(link => link.toNode(b))
         .map(link => if (link.a == a) link.b else link.a)
         .map(node => node.asInstanceOf[Node[T]])
         .map(node => findLow(node, b, quota - 1))

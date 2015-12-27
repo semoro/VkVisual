@@ -114,7 +114,7 @@ class Frame extends JFrame {
   val gbc = ConstraintsHelper.gridXY(0, 0)
   add(panel, BorderLayout.WEST)
   val name = new JTextField()
-  add(scalaI, BorderLayout.SOUTH)
+
 
   panel.setLayout(new GridBagLayout)
   val photoIcon = new JLabel()

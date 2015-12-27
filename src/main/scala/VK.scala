@@ -138,12 +138,13 @@ object VKApi {
 
   // Obtain the Authorization URL
   System.out.println("Fetching the Authorization URL...")
-  val code = JOptionPane.showInputDialog("And paste the authorization code here")
+
   System.out.println("Got the Authorization URL!")
   System.out.println("Now go and authorize ScribeJava here:")
   System.out.println(authorizationUrl)
   System.out.println("And paste the authorization code here")
   System.out.print(">>")
+  val code = JOptionPane.showInputDialog("And paste the authorization code here")
   val verifier = new Verifier(code)
   val accessToken = service.getAccessToken(null, verifier)
 
