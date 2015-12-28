@@ -6,7 +6,7 @@ import scala.collection.mutable
 
 class UGraph[T] {
   val nodes: mutable.MutableList[Node[T]] = mutable.MutableList()
-  val links: mutable.MutableList[Link] = mutable.MutableList()
+  val links: mutable.MutableList[Link[T]] = mutable.MutableList()
 
   def addEdge(a: T, b: T): Unit = {
     val k = new Link(nodes.find(node => node.data == a).get, nodes.find(node => node.data == b).get)
@@ -19,15 +19,15 @@ class UGraph[T] {
     links foreach (link => link.highlight = false)
   }
 
-  def findLow(a: Node[T], b: Node[T], quota: Int): List[Link] = {
+  def findLow(a: Node[T], b: Node[T], quota: Int): List[Link[T]] = {
     if (quota == 0)
       links.filter(link => link.toNode(a) && link.toNode(b)).toList
     else
       links.filter(link => link.toNode(a)).filterNot(link => link.toNode(b))
         .map(link => if (link.a == a) link.b else link.a)
-        .map(node => node.asInstanceOf[Node[T]])
+        .map(node => node)
         .map(node => findLow(node, b, quota - 1))
-        .fold(List[Link]())((b, a) => a ::: b)
+        .fold(List[Link[T]]())((b, a) => a ::: b)
   }
 
   def addVertex(a: T): Boolean = {
@@ -35,7 +35,7 @@ class UGraph[T] {
     true
   }
 
-  def calculatePhys(): Unit = {
+  def calculatePhysics(): Unit = {
     val tmp = new Vector2f
     nodes foreach (node => {
       nodes filterNot (a => a == node) foreach (s => {
@@ -67,16 +67,34 @@ class UGraph[T] {
   }
 }
 
-class Node[+T](_data: T) {
-  var data: Any = _data
-  var d = Math.random()
+class PhysicsThread(graph: UGraph[AnyRef],callback: Runnable) extends Runnable{
+  val thread = new Thread(this)
+  var delta:Long = 0
+  override def run(): Unit = {
+    while(true) {
+      val start = System.currentTimeMillis()
+      graph.calculatePhysics()
+      delta = System.currentTimeMillis() - start
+      callback.run()
+      if (delta < 50)
+        Thread.sleep(50 - delta)
+    }
+  }
+  def start(): Unit = {
+    thread.start()
+  }
+}
+
+class Node[T](_data: T) {
+  var data: T = _data
+  private val d = Math.random()
   var pos = new Vector2f(Math.sin(d * 2 * Math.PI).toFloat * 50, Math.cos(d * 2 * Math.PI).toFloat * 50)
   var force = new Vector2f()
   var count = 0
   var frozen = false
 }
 
-class Link(_a: Node[Any], _b: Node[Any]) {
+class Link[T](_a: Node[T], _b: Node[T]) {
   if (_a == null || _b == null)
     throw new RuntimeException
   val linkLength = 50
@@ -85,11 +103,11 @@ class Link(_a: Node[Any], _b: Node[Any]) {
   var a = _a
   var b = _b
 
-  def toNode(node: Node[Any]): Boolean = a == node || b == node
+  def toNode(node: Node[T]): Boolean = a == node || b == node
 
   override def equals(obj: scala.Any): Boolean = {
     obj match {
-      case other: Link =>
+      case other: Link[T] =>
         other.a == a && other.b == b || other.a == b && other.b == a
       case _ =>
         false
