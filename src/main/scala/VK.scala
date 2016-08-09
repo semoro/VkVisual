@@ -8,7 +8,7 @@ import javax.swing.JOptionPane
 
 import com.github.scribejava.apis.VkontakteApi
 import com.github.scribejava.core.builder.ServiceBuilder
-import com.github.scribejava.core.model.{Token, OAuthRequest, Verb, Verifier}
+import com.github.scribejava.core.model.{OAuthRequest, Token, Verb, Verifier}
 import com.netaporter.uri.Uri
 import com.netaporter.uri.dsl._
 import org.json4s.FileInput
@@ -18,14 +18,13 @@ import org.json4s.native.JsonMethods
 import scala.collection.mutable
 
 class VKUser(val name: String, val id: BigInt, val sex: Sex.Value, val photos: List[String]) extends Comparable[VKUser]{
-  var friends: List[VKUser] = null
   val links: mutable.MutableList[VKUser] = mutable.MutableList()
-
+  var friends: List[VKUser] = null
   var node = false
 
   override def toString() = name + "(" + id + ") " + sex
 
-  def addDirectEdges: Unit = {
+  def addDirectEdges(): Unit = {
     Main.frame.progressbar.setState(LinkTypes.Indirect, friends.count(friend => !friend.node))
     friends.filter(friend => !friend.node).filter(friend => !links.contains(friend)).foreach(friend => {
       friend.addNode()
@@ -41,7 +40,7 @@ class VKUser(val name: String, val id: BigInt, val sex: Sex.Value, val photos: L
     node = Main.graph.addVertex(this)
   }
 
-  def addIndirectEdges: Unit = {
+  def addIndirectEdges(): Unit = {
     Main.frame.progressbar.setState(LinkTypes.Indirect, friends.count(f => true))
     friends.foreach(friend => {
       WorkerThread.addTask(new Runnable {
@@ -64,7 +63,7 @@ class VKUser(val name: String, val id: BigInt, val sex: Sex.Value, val photos: L
       friends = VKApi.getFriends(this)
   }
 
-  def addAvailableEdges: Unit = {
+  def addAvailableEdges(): Unit = {
     friends.filter(friend => friend.node).filter(friend => !links.contains(friend)).foreach(friend => {
       Main.graph.addEdge(this, friend)
       links += friend
@@ -141,7 +140,7 @@ object VKApi {
     .provider(classOf[VkontakteApi])
     .apiKey(clientId)
     .apiSecret(clientSecret)
-    .scope("friends") // replace with desired scope
+    .scope("friends,audio") // replace with desired scope
     .callback("http://oauth.vk.com/blank.html")
     .connectTimeout(1000)
     .readTimeout(1000)
